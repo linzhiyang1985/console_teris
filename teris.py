@@ -116,8 +116,8 @@ class Tetris:
         if self.is_valid_position(self.current_piece, new_pos):
             self.current_pos = new_pos
     
-    def move_down(self, y_down=1):
-        new_pos = Point(self.current_pos.x, self.current_pos.y + y_down)
+    def move_down(self):
+        new_pos = Point(self.current_pos.x, self.current_pos.y + 1)
         if self.is_valid_position(self.current_piece, new_pos):
             self.current_pos = new_pos
             return True
@@ -398,10 +398,14 @@ class Tetris:
             elif key == 'd':
                 self.move_right()
             elif key == 's':
-                self.move_down(2)
-                self.score += 4
+                moved = False
+                for _ in range(2):
+                    if self.move_down():
+                        self.score += 2
+                        moved = True
                 self.last_drop_time = time.time() # 这里已经下降过了, 跳过底下的常规下降
-                self.draw_score_level()
+                if moved:
+                    self.draw_score_level()
             elif key == 'w':
                 self.rotate_piece()
             elif key == ' ':
