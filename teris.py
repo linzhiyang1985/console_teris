@@ -39,6 +39,7 @@ Point = namedtuple('Point', ['x', 'y'])
 class Tetris:
     def __init__(self):
         self.board = [[None for _ in range(WIDTH)] for _ in range(HEIGHT)]
+        self.board_cache = dict[int, str]()
         self.score = 0
         self.level = 1
         self.game_over = False
@@ -180,7 +181,9 @@ class Tetris:
                         self.board[board_y][self.current_pos.x + x] = self.current_piece_color
         
         # 检查是否有可消除的行
-        self.clear_lines()
+        if self.clear_lines() > 0:
+            # 有行被消除，更新分数和级别
+            self.draw_score_level()
         
         # 生成新方块
         self.hold_used = False  # 重置hold使用标记
@@ -210,6 +213,7 @@ class Tetris:
             self.level = self.score // 1000 + 1
             # 提高下落速度
             self.drop_speed = max(0.1, 1.0 - (self.level - 1) * 0.1)
+        return lines_cleared
     
     def clear(self):
         # 清屏
@@ -284,16 +288,23 @@ class Tetris:
         else:
             print(' ' * 40)
 
-    def draw_board(self):
-        self.move_cursor(3, 0)
+    def refresh_board_row(self, y: int, row_text: str):
+        if y not in self.board_cache or self.board_cache[y] != row_text:
+            self.move_cursor(y, 0)
+            print(row_text)
+            self.board_cache[y] = row_text
         
+    def draw_board(self):
         # 计算投影位置
         drop_pos = self.get_drop_position()
         
         # 绘制游戏板
-        print('+' + '-' * WIDTH + '+')
-        for y in range(HEIGHT):
-            print('|', end='')
+        start_y = 3
+        row_text = '+' + '-' * WIDTH + '+' # top border
+        self.refresh_board_row(start_y, row_text)
+
+        for y in range(HEIGHT):  # draw every row
+            row_text = '|'
             for x in range(WIDTH):
                 # 检查当前位置是否有方块
                 piece_in_cell = False
@@ -315,17 +326,19 @@ class Tetris:
                                 break
                         if shadow_in_cell:
                             break
-                
+                # draw every cell
                 if piece_in_cell:
-                    print(self.current_piece_color + '#' + RESET_COLOR, end='')
+                    row_text += self.current_piece_color + '#' + RESET_COLOR
                 elif shadow_in_cell:
-                    print(self.current_piece_color + 'o' + RESET_COLOR, end='')
+                    row_text += self.current_piece_color + 'o' + RESET_COLOR
                 elif self.board[y][x] is not None:
-                    print(self.board[y][x] + '■' + RESET_COLOR, end='')
+                    row_text += self.board[y][x] + '■' + RESET_COLOR
                 else:
-                    print(' ', end='')
-            print('|')
-        print('+' + '-' * WIDTH + '+')
+                    row_text += ' '
+            row_text += '|'  # right border
+            self.refresh_board_row(start_y + y + 1, row_text)
+        row_text = '+' + '-' * WIDTH + '+' # bottom border
+        self.refresh_board_row(start_y + HEIGHT + 1, row_text)
 
     def init_draw(self):
         self.clear()
@@ -387,11 +400,13 @@ class Tetris:
             elif key == 's':
                 self.move_down(2)
                 self.score += 4
-                self.last_drop_time = time.time()
+                self.last_drop_time = time.time() # 这里已经下降过了, 跳过底下的常规下降
+                self.draw_score_level()
             elif key == 'w':
                 self.rotate_piece()
             elif key == ' ':
                 self.hard_drop()
+                self.draw_score_level()
             elif key == 'c':
                 self.hold()
                 self.draw_hold_area()
@@ -419,7 +434,6 @@ class Tetris:
                     self.last_drop_time = current_time
             
             self.draw_board()
-            self.draw_score_level()
             
             # 小延迟，避免游戏过快
             time.sleep(0.05)
