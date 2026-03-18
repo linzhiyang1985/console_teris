@@ -1,7 +1,10 @@
 import os
 import time
 import random
+import msvcrt
 from collections import namedtuple
+
+IS_WINDOWS = os.name == 'nt'
 
 # 定义游戏常量
 WIDTH = 10
@@ -112,8 +115,8 @@ class Tetris:
         if self.is_valid_position(self.current_piece, new_pos):
             self.current_pos = new_pos
     
-    def move_down(self):
-        new_pos = Point(self.current_pos.x, self.current_pos.y + 1)
+    def move_down(self, y_down=1):
+        new_pos = Point(self.current_pos.x, self.current_pos.y + y_down)
         if self.is_valid_position(self.current_piece, new_pos):
             self.current_pos = new_pos
             return True
@@ -182,6 +185,7 @@ class Tetris:
         # 生成新方块
         self.hold_used = False  # 重置hold使用标记
         self.new_piece()
+        self.draw_next_area()
     
     def clear_lines(self):
         lines_cleared = 0
@@ -207,15 +211,35 @@ class Tetris:
             # 提高下落速度
             self.drop_speed = max(0.1, 1.0 - (self.level - 1) * 0.1)
     
-    def draw(self):
+    def clear(self):
         # 清屏
         os.system('cls' if os.name == 'nt' else 'clear')
-        
+
+    def move_cursor(self, row: int, column: int):
+        """移动光标到指定位置"""
+        if IS_WINDOWS:
+            msvcrt.putch(b'\x1b')
+            msvcrt.putch(b'[')
+            for r in f"{row}":
+                msvcrt.putch(r.encode())
+            msvcrt.putch(b';')
+            for c in f"{column}":
+                msvcrt.putch(c.encode())
+            msvcrt.putch(b'H')
+        else:
+            curses.move(row, column)
+
+    def draw_title(self):
+        self.move_cursor(0, 0)
         # 绘制游戏标题
-        print("TETRIS")
+        print(" === TETRIS === ")
+    
+    def draw_score_level(self):
+        self.move_cursor(2, 0)
         print(f"Score: {self.score}  Level: {self.level}")
-        print()
-        
+
+    def draw_hold_area(self):
+        self.move_cursor(27, 0)
         # 绘制hold方块
         print("Hold:")
         if self.hold_piece:
@@ -226,10 +250,42 @@ class Tetris:
                         print(self.hold_piece_color + '#' + RESET_COLOR, end='')
                     else:
                         print(' ', end='')
+                print(' ' * (4 - len(row)), end='') # clean possible residue from last piece
                 print()
         else:
             print('  --')
-        print()
+        for _ in (range(4 - len(self.hold_piece)) if self.hold_piece else range(4)):
+            print('    ')  # clean possible residue from last piece
+
+    def draw_next_area(self):
+        self.move_cursor(32, 0)
+        # 绘制下一个方块
+        print("Next piece:")
+        for row in self.next_piece:
+            print('  ', end='')
+            for cell in row:
+                if cell:
+                    print(self.next_piece_color + '#' + RESET_COLOR, end='')
+                else:
+                    print(' ', end='')
+            print(' ' * (4 - len(row)), end='') # clean possible residue from last piece
+            print()
+
+    def draw_manual(self):
+        self.move_cursor(37, 0)
+        # 绘制操作说明
+        print("Controls:")
+        print("Move: A=left, D=right, S=down, W=rotate; or arrow keys")
+        print("Space: Hard drop")
+        print("C: Hold/exchange piece")
+        print("ENTER/ESC: Pause/Resume; Q: Quit")
+        if self.paused:
+            print("PAUSED - Press ENTER/ESC to resume")
+        else:
+            print(' ' * 40)
+
+    def draw_board(self):
+        self.move_cursor(3, 0)
         
         # 计算投影位置
         drop_pos = self.get_drop_position()
@@ -270,29 +326,16 @@ class Tetris:
                     print(' ', end='')
             print('|')
         print('+' + '-' * WIDTH + '+')
+
+    def init_draw(self):
+        self.clear()
+        self.draw_title()
+        self.draw_score_level()
+        self.draw_board()
+        self.draw_hold_area()
+        self.draw_next_area()
+        self.draw_manual()
         
-        # 绘制下一个方块
-        print("Next piece:")
-        for row in self.next_piece:
-            print('  ', end='')
-            for cell in row:
-                if cell:
-                    print(self.next_piece_color + '#' + RESET_COLOR, end='')
-                else:
-                    print(' ', end='')
-            print()
-        
-        # 绘制操作说明
-        print()
-        print("Controls:")
-        print("A: Move left")
-        print("D: Move right")
-        print("S: Move down")
-        print("W: Rotate")
-        print("Space: Hard drop")
-        print("C/h: Hold piece")
-        print("P/ESC: Pause; ENTER: Resume")
-        print("Q: Quit")
     
     def get_key(self):
         # Get user input
@@ -301,14 +344,13 @@ class Tetris:
             b'w': 'w', b's': 's', b'a': 'a', b'd': 'd',
             b'W': 'w', b'S': 's', b'A': 'a', b'D': 'd',
             b'H': 'w', b'P': 's', b'K': 'a', b'M': 'd', # arrow keys
-            b'q': 'q', b'c': 'c', b'p': 'p', b'h': 'c', # quit, hold, pause
-            b'Q': 'q', b'C': 'c', b'P': 'p',
+            b'q': 'q', b'c': 'c', # quit, hold, pause
+            b'Q': 'q', b'C': 'c',
             b' ': ' ', # hard drop
-            b'\r': 'ENTER', # resume
-            b'\x1b': 'ESC'  # pause
+            b'\r': 'ENTER', # pause/resume
+            b'\x1b': 'ESC'  # pause/resume
         }
         try:
-            import msvcrt
             if msvcrt.kbhit():
                 key = msvcrt.getch()
                 if key in (b'\xe0', b'\x00'):
@@ -332,10 +374,10 @@ class Tetris:
         return None
     
     def run(self):
-        while not self.game_over:
-            # 绘制游戏
-            self.draw()
-            
+        # 首次绘制游戏
+        self.init_draw()
+
+        while not self.game_over:            
             # 处理输入
             key = self.get_key()
             if key == 'a':
@@ -343,8 +385,7 @@ class Tetris:
             elif key == 'd':
                 self.move_right()
             elif key == 's':
-                self.move_down()
-                self.move_down()
+                self.move_down(2)
                 self.score += 4
                 self.last_drop_time = time.time()
             elif key == 'w':
@@ -353,23 +394,20 @@ class Tetris:
                 self.hard_drop()
             elif key == 'c':
                 self.hold()
-            elif key in ('p', 'ENTER', 'ESC'):
-                if key == 'p':
-                    self.paused = not self.paused
-                elif key == 'ENTER' and self.paused:
-                    self.paused = False
-                elif key == 'ESC' and not self.paused:
-                    self.paused = True
+                self.draw_hold_area()
+            elif key == 'ENTER' or key == 'ESC':
+                self.paused = not self.paused
                 # 暂停时显示暂停信息
                 if self.paused:
-                    self.draw()
-                    print("PAUSED - Press P/ENTER to resume")
+                    self.draw_manual()
                     # 等待用户按P键恢复
                     while self.paused:
                         key = self.get_key()
-                        if key == 'p' or key == 'ENTER':
+                        if key == 'ENTER' or key == 'ESC':
                             self.paused = False
+                            self.draw_manual()
                         time.sleep(0.1)
+                    
             elif key == 'q':
                 break
             
@@ -380,11 +418,14 @@ class Tetris:
                     self.move_down()
                     self.last_drop_time = current_time
             
+            self.draw_board()
+            self.draw_score_level()
+            
             # 小延迟，避免游戏过快
             time.sleep(0.05)
         
         # 游戏结束
-        self.draw()
+        self.draw_manual()
         print("Game Over!")
         print(f"Final Score: {self.score}")
 
